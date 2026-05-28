@@ -1,0 +1,13 @@
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+*.log
+
+.vs/
+.vscode/
+
+*.exe
+
+publish/

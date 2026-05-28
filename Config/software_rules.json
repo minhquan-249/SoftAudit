@@ -1,0 +1,54 @@
+{
+  "license_rules": {
+  "windows": "Windows",
+  "office": "Office",
+  "autocad": "AutoCAD"
+  },
+
+  "name_mapping": {
+    "visual studio code": "Visual Studio Code",
+    "microsoft visual studio code": "Visual Studio Code",
+    "visual studio code (user)": "Visual Studio Code",
+
+    "google chrome": "Google Chrome",
+    "microsoft edge": "Microsoft Edge",
+
+    "onedrive": "Microsoft OneDrive",
+    "teams": "Microsoft Teams",
+    "winrar": "WinRAR",
+    "notepad++": "Notepad++",
+    "java": "Java Runtime"
+  },
+
+  "exclusion_rules": [
+    "kb",
+    "security update",
+    "hotfix",
+
+    "workload",
+    "manifest",
+
+    "mui",
+    "proofing",
+    "language",
+    "correction",
+
+    "setup metadata",
+    "shared",
+    "component",
+
+    "targeting pack",
+    "apphost",
+    "templates",
+    "toolset",
+    "linguistic",
+    "proofing tools",
+    "correction",
+    "linguistique",
+    "corrección"
+  ],
+
+  "inclusion_rules": [
+    "webview2"
+  ]
+}
