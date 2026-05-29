@@ -2,7 +2,7 @@
 using SoftAudit.Exporter;
 using SoftAudit.Utils;
 
-Console.WriteLine("SoftAudit v1.2.0");
+Console.WriteLine("SoftAudit v1.3.0");
 Console.WriteLine("SoftAudit started...\n");
 
 try
