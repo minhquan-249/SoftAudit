@@ -1,64 +1,92 @@
 using ClosedXML.Excel;
 using SoftAudit.Core.Models;
-using System;
-using System.Collections.Generic;
+using System.Linq;
 
 namespace SoftAudit.Exporter
 {
+    /// <summary>
+    /// Exports AuditResult to Excel format.
+    /// </summary>
     public class ExcelExporter
     {
-        public void Export(List<Software> data, string filePath)
+        public void Export(AuditResult data, string filePath)
         {
             using var workbook = new XLWorkbook();
-            var worksheet = workbook.Worksheets.Add("Software Inventory");
+            var worksheet = workbook.Worksheets.Add("Audit Result");
 
-            // headers
-            string[] headers =
-            {
-                "HostName",
-                "IPv4",
-                "OS",
-                "Application",
-                "Version",
-                "Publisher",
-                "Install Date",
-                "License Status"
-            };
+            // -------------------------
+            // HEADER ROW 1 (GROUP)
+            // -------------------------
+            worksheet.Cell(1, 1).Value = "HostName";
+            worksheet.Cell(1, 2).Value = "SerialNumber";
+            worksheet.Cell(1, 3).Value = "IPv4";
 
-            for (int i = 0; i < headers.Length; i++)
-            {
-                worksheet.Cell(1, i + 1).Value = headers[i];
-            }
+            worksheet.Cell(1, 4).Value = "Windows";
+            worksheet.Range(1, 4, 1, 6).Merge();
 
-            // header style
-            var headerRange = worksheet.Range(1, 1, 1, headers.Length);
+            worksheet.Cell(1, 7).Value = "Office";
+            worksheet.Range(1, 7, 1, 8).Merge();
+            // -------------------------
+            // HEADER ROW 2 (DETAIL)
+            // -------------------------
+            worksheet.Cell(2, 4).Value = "Version";
+            worksheet.Cell(2, 5).Value = "Activation";
+            worksheet.Cell(2, 6).Value = "Type";
+
+            worksheet.Cell(2, 7).Value = "Version";
+            worksheet.Cell(2, 8).Value = "Activation";
+
+            // merge static columns (vertical)
+            worksheet.Range(1, 1, 2, 1).Merge();
+            worksheet.Range(1, 2, 2, 2).Merge();
+            worksheet.Range(1, 3, 2, 3).Merge();
+
+            // -------------------------
+            // HEADER STYLE
+            // -------------------------
+
+            var headerRange = worksheet.Range(1, 1, 2, 8);
+
             headerRange.Style.Font.Bold = true;
             headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+            headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            headerRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
-            // data
-            int row = 2;
+            // -------------------------
+            // DATA
+            // -------------------------
+            int col = 1;
+            int row = 3;
 
-            foreach (var s in data)
-            {
-                worksheet.Cell(row, 1).Value = s.HostName;
-                worksheet.Cell(row, 2).Value = s.IPv4;
-                worksheet.Cell(row, 3).Value = s.OS;
-                worksheet.Cell(row, 4).Value = s.Name;
-                worksheet.Cell(row, 5).Value = s.Version;
-                worksheet.Cell(row, 6).Value = s.Publisher;
-                worksheet.Cell(row, 7).Value = FormatDate(s.InstallDate);
-                worksheet.Cell(row, 8).Value = string.IsNullOrEmpty(s.LicenseStatus) ? "N/A" : s.LicenseStatus;
+            worksheet.Cell(row, col++).Value = data.HostName;
+            worksheet.Cell(row, col++).Value = data.SerialNumber;
+            worksheet.Cell(row, col++).Value = data.IPv4;
 
-                row++;
-            }
+            worksheet.Cell(row, col++).Value = data.WindowsVersion;
+            worksheet.Cell(row, col++).Value = data.WindowsLicense;
+            worksheet.Cell(row, col++).Value = data.WindowsLicenseType;
 
-            // adjust column width
-            worksheet.Columns().AdjustToContents();
+            worksheet.Cell(row, col++).Value = data.OfficeVersion;
+            worksheet.Cell(row, col++).Value = data.OfficeLicense;
 
-            // freeze header
-            worksheet.SheetView.FreezeRows(1);
+            // -------------------------
+            // FORMAT
+            // -------------------------
+            worksheet.Column(1).Width = 20; // HostName
+            worksheet.Column(2).Width = 20; // SerialNumber
+            worksheet.Column(3).Width = 18; // IPv4
 
-            // border
+            worksheet.Column(4).Width = 40; // Windows Version
+            worksheet.Column(5).Width = 15; // Activation
+            worksheet.Column(6).Width = 12; // Type
+
+            worksheet.Column(7).Width = 40; // Office Version
+            worksheet.Column(8).Width = 18; // Activation
+
+
+            // freeze 2 header rows
+            worksheet.SheetView.FreezeRows(2);
+
             var usedRange = worksheet.RangeUsed();
             if (usedRange != null)
             {
@@ -67,26 +95,6 @@ namespace SoftAudit.Exporter
             }
 
             workbook.SaveAs(filePath);
-        }
-
-        private string FormatDate(string rawDate)
-        {
-            if (string.IsNullOrEmpty(rawDate))
-                return "N/A";
-
-            if (rawDate.Length == 8)
-            {
-                try
-                {
-                    var date = DateTime.ParseExact(rawDate, "yyyyMMdd", null);
-                    return date.ToString("yyyy-MM-dd");
-                }
-                catch
-                {
-                }
-            }
-
-            return rawDate;
         }
     }
 }

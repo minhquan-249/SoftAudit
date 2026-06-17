@@ -18,6 +18,6 @@
     </None>
   </ItemGroup>
   <PropertyGroup>
-  <Version>1.2.0</Version>
+  <Version>1.4.0</Version>
 </PropertyGroup>
 </Project>

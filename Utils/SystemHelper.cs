@@ -1,9 +1,13 @@
+using System;
 using System.Management;
 
 namespace SoftAudit.Utils
 {
     public static class SystemHelper
     {
+        // -------------------------
+        // OS
+        // -------------------------
         public static string GetOS()
         {
             try
@@ -26,6 +30,9 @@ namespace SoftAudit.Utils
             return "Unknown OS";
         }
 
+        // -------------------------
+        // HOST NAME
+        // -------------------------
         public static string GetHostName()
         {
             try
@@ -36,6 +43,31 @@ namespace SoftAudit.Utils
             {
                 return "Unknown Host";
             }
+        }
+
+        // -------------------------
+        // SERIAL NUMBER (BIOS)
+        // -------------------------
+        public static string GetSerialNumber()
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT SerialNumber FROM Win32_BIOS");
+
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    string serial = obj["SerialNumber"]?.ToString() ?? "";
+
+                    if (!string.IsNullOrWhiteSpace(serial))
+                        return serial.Trim();
+                }
+            }
+            catch
+            {
+            }
+
+            return "Unknown";
         }
     }
 }

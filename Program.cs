@@ -1,27 +1,26 @@
-﻿using SoftAudit.Core.Pipeline;
+﻿using SoftAudit.Core;
 using SoftAudit.Exporter;
 using SoftAudit.Utils;
+using System;
 
-Console.WriteLine("SoftAudit v1.2.0");
-Console.WriteLine("SoftAudit started...\n");
+Console.WriteLine("SoftAudit v1.4.0");
+Console.WriteLine("Starting audit...\n");
 
 try
 {
-    var pipeline = new SoftwarePipeline();
-    var softwares = pipeline.Execute();
 
-    var machine = Environment.MachineName;
+    // -------------------------
+    // RUN AUDIT
+    // -------------------------
+    var service = new AuditService();
+    var result = service.Run();
 
-    string ip;
-    try
-    {
-        ip = NetworkHelper.GetActiveIP();
-        ip = ip.Replace(":", "_");
-    }
-    catch
-    {
-        ip = "NoIP";
-    }
+    // -------------------------
+    // BUILD FILE PATH
+    // -------------------------
+    var machine = result.HostName;
+
+    string ip = result.IPv4.Replace(":", "_");
 
     var time = DateTime.Now.ToString("yyyyMMdd");
 
@@ -38,23 +37,23 @@ try
 
     try
     {
-        exporter.Export(softwares, path);
-        Console.WriteLine($"Exported: {path}");
+        exporter.Export(result, path);
+        Console.WriteLine($"[EXPORT] Success: {path}");
     }
-    catch (Exception  ex)
+    catch (Exception ex)
     {
-        Console.WriteLine("\nExport failed: " + ex.Message);
+        Console.WriteLine($"[EXPORT] Failed: {ex.Message}");
 
         string fallback = $@"{folder}\{machine}_{time}.xlsx";
 
         try
         {
-            exporter.Export(softwares, fallback);
-            Console.WriteLine($"Saved locally: {fallback}");
+            exporter.Export(result, fallback);
+            Console.WriteLine($"[EXPORT] Fallback success: {fallback}");
         }
         catch
         {
-            Console.WriteLine("Fallback export also failed.");
+            Console.WriteLine("[EXPORT] Fallback export failed.");
         }
     }
 }
