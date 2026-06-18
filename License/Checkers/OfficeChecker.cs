@@ -26,7 +26,7 @@ namespace SoftAudit.License.Checkers
                     return "Activated";
                 }
 
-                return "Not Activated";
+                return "Unknown";
             }
             catch
             {
