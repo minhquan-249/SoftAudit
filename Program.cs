@@ -35,25 +35,49 @@ try
 
     var exporter = new ExcelExporter();
 
+    string networkPath = @"\\10.168.109.254\Software\1. Tool Soft Audit\Data";
+
+    string fileName = $"{machine}_{ip}_{time}.xlsx";
+
+    string networkFile = Path.Combine(networkPath, fileName);
+    string localFile = Path.Combine(folder, fileName);
+
     try
     {
-        exporter.Export(result, path);
-        Console.WriteLine($"[EXPORT] Success: {path}");
+        // -------------------------
+        // TRY NETWORK FIRST
+        // -------------------------
+
+        if (Directory.Exists(networkPath))
+        {
+            exporter.Export(result, networkFile);
+            Console.WriteLine($"[EXPORT] Network success: {networkFile}");
+        }
+        else
+        {
+            throw new Exception("Network path not reachable");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[EXPORT] Failed: {ex.Message}");
+        Console.WriteLine($"[NETWORK] Failed: {ex.Message}");
 
-        string fallback = $@"{folder}\{machine}_{time}.xlsx";
-
+        // -------------------------
+        // FALLBACK LOCAL
+        // -------------------------
         try
         {
-            exporter.Export(result, fallback);
-            Console.WriteLine($"[EXPORT] Fallback success: {fallback}");
+            if (!Directory.Exists(folder))
+            {
+                Directory.CreateDirectory(folder);
+            }
+
+            exporter.Export(result, localFile);
+            Console.WriteLine($"[EXPORT] Local fallback: {localFile}");
         }
-        catch
+        catch (Exception inner)
         {
-            Console.WriteLine("[EXPORT] Fallback export failed.");
+            Console.WriteLine($"[EXPORT] Local fallback failed: {inner.Message}");
         }
     }
 }

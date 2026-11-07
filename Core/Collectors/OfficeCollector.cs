@@ -24,31 +24,7 @@ namespace SoftAudit.Core.Collectors
         private string GetOfficeVersion()
         {
             // =========================
-            // 1. CLICK-TO-RUN (PRIORITY)
-            // =========================
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(
-                    @"SOFTWARE\Microsoft\Office\ClickToRun\Configuration");
-
-                if (key != null)
-                {
-                    var product = key.GetValue("ProductReleaseIds")?.ToString();
-                    var version = key.GetValue("ProductVersion")?.ToString();
-
-                    if (!string.IsNullOrWhiteSpace(product))
-                    {
-                        // giữ raw + version
-                        return $"Microsoft Office ({product}) [{version}]";
-                    }
-                }
-            }
-            catch
-            {
-            }
-
-            // =========================
-            // 2. FALLBACK: UNINSTALL
+            // 1. ƯU TIÊN: UNINSTALL (FULL NAME CHUẨN)
             // =========================
             var paths = new[]
             {
@@ -67,17 +43,45 @@ namespace SoftAudit.Core.Collectors
                     foreach (var subName in key.GetSubKeyNames())
                     {
                         using var sub = key.OpenSubKey(subName);
+
                         var name = sub?.GetValue("DisplayName")?.ToString();
+                        var publisher = sub?.GetValue("Publisher")?.ToString();
 
                         if (string.IsNullOrWhiteSpace(name))
                             continue;
 
                         var lower = name.ToLowerInvariant();
 
-                        if (lower.Contains("microsoft") && lower.Contains("office"))
+                        // ✅ lọc chính xác hơn để tránh dính Office Tools / OneDrive...
+                        if (lower.Contains("microsoft office") &&
+                            !lower.Contains("update") &&
+                            !lower.Contains("click-to-run"))
                         {
-                            return name.Trim(); // 🔥 giữ nguyên tên
+                            return name.Trim(); // 🔥 chính là thứ bạn cần
                         }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            // =========================
+            // 2. FALLBACK: CLICK-TO-RUN (KHÔNG ĐẸP NHƯNG CỨU CÁNH)
+            // =========================
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Office\ClickToRun\Configuration");
+
+                if (key != null)
+                {
+                    var client = key.GetValue("ClientVersionToReport")?.ToString();
+                    var product = key.GetValue("ProductReleaseIds")?.ToString();
+
+                    if (!string.IsNullOrWhiteSpace(product))
+                    {
+                        return $"Microsoft Office ({product}) [{client}]";
                     }
                 }
             }
