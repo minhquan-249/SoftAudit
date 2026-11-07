@@ -11,7 +11,7 @@ namespace SoftAudit
 {
     public static class Program
     {
-        public const string ToolVersion = "2.0.0";
+        public const string ToolVersion = "2.0.1";
 
         const string LocalFolder = @"C:\SoftAudit";
 

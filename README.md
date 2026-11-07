@@ -1,4 +1,4 @@
-# SoftAudit v2.0.0
+# SoftAudit v2.0.1
 
 Kiểm tra 1 máy Windows (PC hoặc Server) và xuất ra 1 file Excel:
 
@@ -51,7 +51,7 @@ Cập nhật: dán code vào project Apps Script cũ → Save → **Deploy → M
 ## Cách hoạt động
 
 - **Loại máy**: `Win32_OperatingSystem.ProductType` (1 = Client, 2/3 = Server).
-- **IP**: Client lấy card mạng đang Up có gateway, bỏ card ảo/VPN (FortiClient, VMware, Hyper-V…). Server lấy IP mà Windows dùng để route ra ngoài (hợp với host Hyper-V, NIC teaming). Mỗi cách lỗi thì thử cách kia, rồi đến DNS.
+- **IP**: Client lấy IP mà Windows dùng để route ra ngoài (có tính metric, nên cắm cả LAN và Wi-Fi sẽ ra LAN), nhưng chỉ nhận nếu IP đó thuộc card vật lý đang Up có gateway; nếu không thì lấy card đầu tiên như vậy, bỏ card ảo/VPN (FortiClient, VMware, Hyper-V…). Server lấy IP mà Windows dùng để route ra ngoài (hợp với host Hyper-V, NIC teaming). Mỗi cách lỗi thì thử cách kia, rồi đến DNS.
 - **MAC**: MAC của đúng card đang giữ IP ở trên.
 - **License Windows / Office**: đọc WMI `SoftwareLicensingProduct` (và `OfficeSoftwareProtectionProduct` cho Office 2010 / Win7), không parse chữ của slmgr/ospp nữa, nên đúng với mọi ngôn ngữ Windows và mọi bản Office 2010+. Microsoft 365 đăng nhập bằng tài khoản không có key trong WMI, tool ghi "Microsoft 365 (check portal)".
 - **Phần mềm**: registry Uninstall (HKLM 64/32-bit + HKCU), lọc/chuẩn hoá tên theo bộ rule cũ trong `software_rules.json` (nay nằm trong `Core/SoftwareScanner.cs`), bỏ trùng.

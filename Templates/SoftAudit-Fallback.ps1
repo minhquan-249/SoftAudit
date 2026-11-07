@@ -1,4 +1,4 @@
-﻿# SoftAudit v2.0.0 - PowerShell fallback
+﻿# SoftAudit v2.0.1 - PowerShell fallback
 # Used by Run.bat only when SoftAudit.exe cannot run (e.g. .NET Framework 4.8 missing on an old server).
 # Same checks as the exe, written for PowerShell 2.0+ (Windows 7 / Server 2008 R2 and later).
 # Output: <HOST>_<IP>_<yyyyMMdd>_summary.csv and _software.csv.
@@ -6,7 +6,7 @@
 # Site settings come from SoftAudit.ini next to this script (SiteName, DriveUploadUrl, SharePath).
 
 $ErrorActionPreference = 'SilentlyContinue'
-$ToolVersion = '2.0.0-ps'
+$ToolVersion = '2.0.1-ps'
 $LocalFolder = 'C:\SoftAudit'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path   # $PSScriptRoot does not exist in PS 2.0
 
@@ -76,7 +76,8 @@ $windowsVersion = "$osCaption ($osVersion)"
 # ---------------- network (same rules as NetworkHelper.cs) ----------------
 function Test-UsableIp($ip) { $ip -and -not ($ip.StartsWith('127.') -or $ip.StartsWith('169.254.') -or $ip -eq '0.0.0.0') }
 
-function Get-IpFromAdapters {
+function Get-IpsFromAdapters {
+    $ips = @()
     $skip = 'virtual', 'vpn', 'vmware', 'hyper-v', 'fortinet', 'bluetooth', 'tap-', 'wan miniport'
     foreach ($ni in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
         if ($ni.OperationalStatus -ne 'Up' -or $ni.NetworkInterfaceType -eq 'Loopback') { continue }
@@ -89,10 +90,10 @@ function Get-IpFromAdapters {
         if ($gw.Count -eq 0) { continue }
         foreach ($a in $props.UnicastAddresses) {
             $ip = $a.Address.ToString()
-            if ($a.Address.AddressFamily -eq 'InterNetwork' -and (Test-UsableIp $ip)) { return $ip }
+            if ($a.Address.AddressFamily -eq 'InterNetwork' -and (Test-UsableIp $ip)) { $ips += $ip; break }
         }
     }
-    return $null
+    return ,$ips
 }
 
 function Get-IpFromRoute {
@@ -106,8 +107,13 @@ function Get-IpFromRoute {
     return $null
 }
 
-if ($isServer) { $ip = Get-IpFromRoute; if (-not $ip) { $ip = Get-IpFromAdapters } }
-else { $ip = Get-IpFromAdapters; if (-not $ip) { $ip = Get-IpFromRoute } }
+# Client: routed IP (respects LAN/Wi-Fi metric) only if it is on a physical adapter with a gateway.
+$routeIp = Get-IpFromRoute
+$adapterIps = Get-IpsFromAdapters
+if ($isServer) { $ip = $routeIp; if (-not $ip) { $ip = $adapterIps | Select-Object -First 1 } }
+elseif ($routeIp -and ($adapterIps -contains $routeIp)) { $ip = $routeIp }
+elseif ($adapterIps.Count -gt 0) { $ip = $adapterIps[0] }
+else { $ip = $routeIp }
 if (-not $ip) { $ip = 'NoIP' }
 
 $mac = 'Unknown'

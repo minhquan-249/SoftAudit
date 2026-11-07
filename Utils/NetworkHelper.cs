@@ -8,8 +8,9 @@ namespace SoftAudit.Utils
 {
     /// <summary>
     /// Two ways to find the machine's main IPv4:
-    /// - Client (v1.2/v1.4 method): first Up adapter with a gateway, skipping virtual/VPN adapters,
-    ///   so a FortiClient VPN or VMware adapter is never reported.
+    /// - Client: the routed source address (respects route + interface metric, so LAN beats Wi-Fi when
+    ///   both are up), but only if it belongs to an Up physical adapter with a gateway; otherwise the first
+    ///   such adapter (v1.2/v1.4 method), so a FortiClient VPN or VMware adapter is never reported.
     /// - Server (v1.3.1 method): the source address Windows would use to route out. On Hyper-V hosts and
     ///   NIC teams the real IP lives on a "Hyper-V Virtual Ethernet Adapter" / team adapter, which the
     ///   client filter would skip.
@@ -26,12 +27,16 @@ namespace SoftAudit.Utils
             if (isServer)
             {
                 ip = FromRoute(); how = "route";
-                if (ip == null) { ip = FromAdapters(); how = "adapters"; }
+                if (ip == null) { ip = AdapterIPs().FirstOrDefault(); how = "adapters"; }
             }
             else
             {
-                ip = FromAdapters(); how = "adapters";
-                if (ip == null) { ip = FromRoute(); how = "route"; }
+                var route = FromRoute();
+                var adapters = AdapterIPs();
+                Log.Info($"Client IP candidates: route {route ?? "none"}; adapters {(adapters.Length == 0 ? "none" : string.Join(", ", adapters))}", console: false);
+                if (route != null && adapters.Contains(route)) { ip = route; how = "route"; }
+                else if (adapters.Length > 0) { ip = adapters[0]; how = "adapters"; }
+                else { ip = route; how = "route"; }
             }
             if (ip == null) { ip = FromDns(); how = "dns"; }
 
@@ -62,8 +67,10 @@ namespace SoftAudit.Utils
             return "Unknown";
         }
 
-        static string? FromAdapters()
+        /// <summary>IPv4 of every Up, non-virtual/VPN adapter that has a gateway, in Windows' listing order.</summary>
+        static string[] AdapterIPs()
         {
+            var list = new System.Collections.Generic.List<string>();
             try
             {
                 foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
@@ -84,13 +91,13 @@ namespace SoftAudit.Utils
                         .Select(a => a.Address)
                         .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && IsUsable(a));
                     if (ip != null)
-                        return ip.ToString();
+                        list.Add(ip.ToString());
                 }
             }
             catch
             {
             }
-            return null;
+            return list.ToArray();
         }
 
         static string? FromRoute()
