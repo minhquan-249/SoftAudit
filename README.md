@@ -11,11 +11,40 @@ Gộp v1.3 (kiểm kê phần mềm, cách lấy IP cho server) và v1.4 (audit 
 
 ## Chạy
 
-Copy thư mục `SoftAudit v2.0.0` (4 file: `SoftAudit.exe`, `SoftAudit.exe.config`, `Run.bat`, `SoftAudit-Fallback.ps1`) rồi chạy `Run.bat`, chọn site (1 LITV, 2 HOT, 3 LDS, 4 Coralis, 5 chỉ lưu trên máy). Không cần quyền admin.
+Mỗi site một gói riêng (giống SM-Tool): `SoftAudit-LITV`, `SoftAudit-HOT`, `SoftAudit-LDS`, `SoftAudit-Coralis`.
+Copy thư mục gói (hoặc giải nén zip) rồi chạy `SoftAudit-<SITE>.bat`. Không cần quyền admin, không phải chọn gì.
 
-- File luôn được lưu vào `C:\SoftAudit\HOST_IP_yyyyMMdd.xlsx`, sau đó copy lên share của site đã chọn (đường dẫn nằm trong `Run.bat`; thư mục `SoftAudit` trên share được tự tạo nếu chưa có).
-- Nếu `SoftAudit.exe` không chạy được (máy thiếu .NET Framework 4.8, ví dụ Server 2008 R2 / 2012 R2 chưa cài), `Run.bat` tự chạy `SoftAudit-Fallback.ps1`, cùng logic, xuất ra 2 file CSV (`_summary.csv`, `_software.csv`).
-- Chạy tay: `SoftAudit.exe ["\\share\folder"] [/nopause]`; không truyền share thì chỉ lưu `C:\SoftAudit`. Exit code 0 = đã lưu được ít nhất 1 nơi.
+Kết quả được lưu theo 3 tầng như SM-Tool:
+1. Luôn lưu `C:\SoftAudit\HOST_IP_yyyyMMdd.xlsx`.
+2. Đẩy lên Google Drive qua Apps Script chung với SM-Tool → `DATA/<SITE>/SoftAudit/`.
+3. Drive lỗi thì copy lên share của site (`SharePath` trong `SoftAudit.ini`, thư mục cuối tự tạo nếu chưa có).
+
+Nếu `SoftAudit.exe` không chạy được (máy thiếu .NET Framework 4.8, ví dụ Server 2008 R2 / 2012 R2 chưa cài), file bat tự chạy `SoftAudit-Fallback.ps1`: cùng logic, cùng 3 tầng, xuất 2 file CSV (`_summary.csv`, `_software.csv`).
+
+Chạy tay: `SoftAudit.exe [/nopause]`. Thiếu `SoftAudit.ini` thì chỉ lưu `C:\SoftAudit`. Exit code 0 = đã lưu được ít nhất 1 nơi.
+
+## Cấu hình site
+
+`Sites\<SITE>.ini` (copy từ `Sites\_example.ini`), cùng giá trị với `SM-Tool\Sites\<SITE>.psd1`:
+
+```
+SiteName=HOT
+DriveUploadUrl=https://script.google.com/macros/s/.../exec
+SharePath=\\10.172.25.45\Public\It\2. Setup\Quanbm\DATA\SoftAudit
+```
+
+**Không commit file site thật** (repo public, file có URL Drive) — `.gitignore` đã chặn, chỉ `_example.ini` được commit.
+
+## Apps Script (dùng chung với SM-Tool)
+
+`AppsScript/Code.gs` nhận thêm `subFolder` và lưu theo site:
+
+```
+DATA/<SITE>/PC-Info/    CSV thông tin máy (SM-Tool)
+DATA/<SITE>/SoftAudit/  Excel / CSV của SoftAudit
+```
+
+Cập nhật: dán code vào project Apps Script cũ → Save → **Deploy → Manage deployments → Edit → Version: New version → Deploy**. Không tạo deployment mới (URL `/exec` sẽ đổi, SM-Tool phải build lại).
 
 ## Cách hoạt động
 
@@ -28,17 +57,17 @@ Copy thư mục `SoftAudit v2.0.0` (4 file: `SoftAudit.exe`, `SoftAudit.exe.conf
 ## Build
 
 ```
-dotnet build -c Release
+.\Build.ps1            # tất cả Sites\*.ini
+.\Build.ps1 -Site HOT  # 1 site
 ```
 
-Kết quả ở `bin/Release/net48/` (`SoftAudit.exe` ~3 MB, ClosedXML đã được nhúng bằng Costura). Copy thêm `Dist/Run.bat` và `Dist/SoftAudit-Fallback.ps1` vào cùng thư mục.
+Kết quả ở `Dist\SoftAudit-<SITE>\` + `Dist\SoftAudit-<SITE>.zip` (exe ~3 MB, ClosedXML nhúng bằng Costura). Cần .NET SDK (`dotnet`).
 
-Kiểm tra logic + layout Excel:
+Kiểm tra:
 
 ```
-cd Tests/SelfCheck
-dotnet build -c Release
-bin/Release/net48/SelfCheck.exe
+cd Tests/SelfCheck && dotnet build -c Release && bin/Release/net48/SelfCheck.exe   # logic, ini, form Drive, layout Excel
+node Tests/AppsScript/code-gs.test.js                                               # routing thư mục của Code.gs
 ```
 
 ## Đổi so với v1.x
@@ -48,4 +77,5 @@ bin/Release/net48/SelfCheck.exe
 - Sửa lỗi: chỉ tìm `ospp.vbs` của Office16.
 - .NET 8 (exe 79 MB) → .NET Framework 4.8 (exe ~3 MB, có sẵn trong Windows 10/11, Server 2019/2022).
 - Không còn cần thư mục `Config\`.
+- Mỗi site 1 gói (`Sites\*.ini` + `Build.ps1`), upload Drive → share giống SM-Tool, thêm cột Site.
 - Bỏ check AutoCAD (đã tắt từ v1.2).

@@ -6,6 +6,7 @@ namespace SoftAudit.Core.Models
     /// <summary>Everything collected from one machine.</summary>
     public class AuditResult
     {
+        public string Site { get; set; } = "";
         public string HostName { get; set; } = "";
         public string SerialNumber { get; set; } = "";
         public string MachineType { get; set; } = "";   // Server / Client

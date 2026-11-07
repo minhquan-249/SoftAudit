@@ -16,30 +16,25 @@ namespace SoftAudit
         const string LocalFolder = @"C:\SoftAudit";
 
         /// <summary>
-        /// SoftAudit.exe [shareFolder] [/nopause]
-        /// shareFolder is the site's network folder (Run.bat picks it from the site menu);
-        /// without it the result is saved to C:\SoftAudit only.
-        /// Exit code 0 = at least the local copy was saved, 1 = nothing saved.
+        /// SoftAudit.exe [/nopause]
+        /// Site, Drive URL and share come from SoftAudit.ini next to the exe (see Utils/SiteConfig.cs).
+        /// Exit code 0 = the result was saved somewhere, 1 = nothing saved.
         /// </summary>
         public static int Main(string[] args)
         {
             Console.OutputEncoding = new System.Text.UTF8Encoding(false);
-            Console.WriteLine($"SoftAudit v{ToolVersion}");
+            var site = SiteConfig.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SoftAudit.ini"));
+            Console.WriteLine($"SoftAudit v{ToolVersion}" + (site.SiteName == "" ? " (no SoftAudit.ini: local only)" : $" - {site.SiteName}"));
             Console.WriteLine("Starting audit...\n");
 
-            var sharePath = "";
-            var pause = true;
-            foreach (var a in args)
-            {
-                if (a.Equals("/nopause", StringComparison.OrdinalIgnoreCase)) pause = false;
-                else sharePath = a;
-            }
+            var pause = !Array.Exists(args, a => a.Equals("/nopause", StringComparison.OrdinalIgnoreCase));
 
             int exitCode = 1;
             try
             {
                 var result = Collect();
-                exitCode = Save(result, sharePath) ? 0 : 1;
+                result.Site = site.SiteName;
+                exitCode = Save(result, site) ? 0 : 1;
             }
             catch (Exception ex)
             {
@@ -83,47 +78,62 @@ namespace SoftAudit
             return r;
         }
 
-        /// <summary>Always writes C:\SoftAudit first (nothing is lost if the share is down), then copies to the share.</summary>
-        static bool Save(AuditResult r, string sharePath)
+        /// <summary>
+        /// Same tiers as SM-Tool: 1) always C:\SoftAudit, 2) Google Drive (site folder / SoftAudit),
+        /// 3) site share only if Drive failed. Returns true when the file was saved anywhere.
+        /// </summary>
+        static bool Save(AuditResult r, SiteConfig site)
         {
             var fileName = $"{r.HostName}_{r.IPv4.Replace(":", "_")}_{r.CheckDate:yyyyMMdd}.xlsx";
             var localFile = Path.Combine(LocalFolder, fileName);
-            var shareFile = Path.Combine(sharePath, fileName);
-            bool localOk = false, shareOk = false;
 
             try
             {
                 Directory.CreateDirectory(LocalFolder);
                 ExcelExporter.Export(r, localFile);
-                localOk = true;
                 Console.WriteLine($"\n[EXPORT]   Local:   {localFile}");
             }
             catch (Exception ex)
             {
+                // without a local copy there is nothing to upload; try writing straight to the share
                 Console.WriteLine($"\n[EXPORT]   Local failed: {ex.Message}");
+                return site.SharePath != "" && TryShare(site.SharePath, fileName, dest => ExcelExporter.Export(r, dest));
             }
 
-            if (sharePath == "")
-                return localOk;
+            if (site.DriveUploadUrl != "")
+            {
+                Console.WriteLine("[EXPORT]   Uploading to Google Drive...");
+                if (DriveUploader.Upload(site.DriveUploadUrl, site.SiteName, localFile))
+                {
+                    Console.WriteLine($"[EXPORT]   Drive:   {site.SiteName}/{DriveUploader.SubFolder}/{fileName}");
+                    return true;
+                }
+                Console.WriteLine("[EXPORT]   Drive failed.");
+            }
 
+            if (site.SharePath != "" && TryShare(site.SharePath, fileName, dest => File.Copy(localFile, dest, true)))
+                return true;
+
+            Console.WriteLine($"[EXPORT]   Only saved locally. Please send {localFile} to IT.");
+            return true;
+        }
+
+        static bool TryShare(string sharePath, string fileName, Action<string> write)
+        {
             try
             {
                 // creates the SoftAudit subfolder on first run; throws if the share itself is unreachable
                 Directory.CreateDirectory(sharePath);
-                if (localOk)
-                    File.Copy(localFile, shareFile, overwrite: true);
-                else
-                    ExcelExporter.Export(r, shareFile);
-                shareOk = true;
-                Console.WriteLine($"[EXPORT]   Network: {shareFile}");
+                var dest = Path.Combine(sharePath, fileName);
+                write(dest);
+                Console.WriteLine($"[EXPORT]   Share:   {dest}");
+                return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[EXPORT]   Network failed: {ex.Message}");
-                if (localOk)
-                    Console.WriteLine($"           Please send {localFile} to IT.");
+                Console.WriteLine($"[EXPORT]   Share failed: {ex.Message}");
+                return false;
             }
-            return localOk || shareOk;
         }
     }
 }

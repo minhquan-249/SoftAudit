@@ -1,14 +1,28 @@
 ﻿# SoftAudit v2.0.0 - PowerShell fallback
 # Used by Run.bat only when SoftAudit.exe cannot run (e.g. .NET Framework 4.8 missing on an old server).
 # Same checks as the exe, written for PowerShell 2.0+ (Windows 7 / Server 2008 R2 and later).
-# Output: <HOST>_<IP>_<yyyyMMdd>_summary.csv and _software.csv, in C:\SoftAudit and the site share (-SharePath).
-
-param([string]$SharePath = '')
+# Output: <HOST>_<IP>_<yyyyMMdd>_summary.csv and _software.csv.
+# Same tiers as the exe / SM-Tool: always C:\SoftAudit, then Google Drive, then the site share if Drive failed.
+# Site settings come from SoftAudit.ini next to this script (SiteName, DriveUploadUrl, SharePath).
 
 $ErrorActionPreference = 'SilentlyContinue'
 $ToolVersion = '2.0.0-ps'
 $LocalFolder = 'C:\SoftAudit'
-Write-Host "SoftAudit v$ToolVersion (PowerShell fallback)`n"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path   # $PSScriptRoot does not exist in PS 2.0
+
+$Site = @{ SiteName = ''; DriveUploadUrl = ''; SharePath = '' }
+$iniPath = Join-Path $ScriptDir 'SoftAudit.ini'
+if (Test-Path $iniPath) {
+    foreach ($line in Get-Content $iniPath) {
+        $line = $line.Trim()
+        if (-not $line -or $line.StartsWith(';') -or $line.StartsWith('#') -or $line.IndexOf('=') -lt 1) { continue }
+        $key = $line.Substring(0, $line.IndexOf('=')).Trim()
+        $value = $line.Substring($line.IndexOf('=') + 1).Trim().Trim('"', "'")
+        if ($Site.ContainsKey($key)) { $Site[$key] = $value }
+    }
+}
+
+Write-Host "SoftAudit v$ToolVersion (PowerShell fallback) - site: $(if ($Site.SiteName) { $Site.SiteName } else { 'none, local only' })`n"
 
 function Get-Wmi1($class, $prop) {
     $o = Get-WmiObject -Class $class | Select-Object -First 1
@@ -167,11 +181,11 @@ $software = foreach ($e in $entries) {
 $software = @($software | Sort-Object Application | Select-Object HostName, IPv4, Application, Version, Publisher, 'Install Date')
 
 $summary = New-Object PSObject -Property @{
-    HostName = $hostName; 'Serial Number' = $serial; 'Machine Type' = $machineType; IPv4 = $ip; MAC = $mac
+    Site = $Site.SiteName; HostName = $hostName; 'Serial Number' = $serial; 'Machine Type' = $machineType; IPv4 = $ip; MAC = $mac
     'Windows Version' = $windowsVersion; 'Windows Activation' = $win[0]; 'Windows Channel' = $win[1]
     'Office Version' = $officeVersion; 'Office Activation' = $off[0]; 'Office Channel' = $off[1]
     'Check Date' = (Get-Date -Format 'yyyy-MM-dd HH:mm'); 'Tool Version' = $ToolVersion
-} | Select-Object HostName, 'Serial Number', 'Machine Type', IPv4, MAC, 'Windows Version', 'Windows Activation',
+} | Select-Object Site, HostName, 'Serial Number', 'Machine Type', IPv4, MAC, 'Windows Version', 'Windows Activation',
     'Windows Channel', 'Office Version', 'Office Activation', 'Office Channel', 'Check Date', 'Tool Version'
 
 Write-Host "[SYSTEM]   $hostName | $machineType | $ip | $mac | SN $serial"
@@ -179,20 +193,65 @@ Write-Host "[WINDOWS]  $windowsVersion | $($win[0]) ($($win[1]))"
 Write-Host "[OFFICE]   $officeVersion | $($off[0]) ($($off[1]))"
 Write-Host "[SOFTWARE] $($software.Count) applications`n"
 
-# ---------------- save: local first, then share ----------------
+# ---------------- save: local, then Drive, then share (same as SM-Tool) ----------------
 $base = '{0}_{1}_{2}' -f $hostName, $ip.Replace(':', '_'), (Get-Date -Format 'yyyyMMdd')
-$saved = $false
-foreach ($folder in @($LocalFolder, $SharePath | Where-Object { $_ })) {
+$files = @("$base`_summary.csv", "$base`_software.csv")
+
+function Save-Csvs($folder) {
+    if (-not (Test-Path $folder)) { New-Item -ItemType Directory -Path $folder -ErrorAction Stop | Out-Null }
+    $summary | Export-Csv -Path (Join-Path $folder $files[0]) -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+    $software | Export-Csv -Path (Join-Path $folder $files[1]) -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+}
+
+# Apps Script web app shared with SM-Tool (AppsScript\Code.gs): form POST, overwrites same name -> safe to retry
+function Send-ToDrive($path) {
+    if ((Get-Item $path).Length -eq 0) { return $true }   # empty CSV (no software): Apps Script rejects empty fileData
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }  # TLS 1.2
+    $form = New-Object System.Collections.Specialized.NameValueCollection
+    $form.Add('site', $Site.SiteName)
+    $form.Add('subFolder', 'SoftAudit')
+    $form.Add('fileName', [IO.Path]::GetFileName($path))
+    $form.Add('fileData', [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)))
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $wc = New-Object System.Net.WebClient
+            $resp = [Text.Encoding]::UTF8.GetString($wc.UploadValues($Site.DriveUploadUrl, 'POST', $form))
+            if ($resp.Replace(' ', '') -match '"success":true') { return $true }
+            Write-Host "           Drive refused (attempt $attempt/3): $resp"
+        } catch {
+            Write-Host "           Drive error (attempt $attempt/3): $_"
+        }
+        if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+    }
+    return $false
+}
+
+$localOk = $false
+try {
+    Save-Csvs $LocalFolder
+    $localOk = $true
+    Write-Host "[EXPORT]   Local:   $LocalFolder\$base`_*.csv"
+} catch {
+    Write-Host "[EXPORT]   Local failed: $_"
+}
+
+if ($localOk -and $Site.DriveUploadUrl) {
+    Write-Host '[EXPORT]   Uploading to Google Drive...'
+    $driveOk = $true
+    foreach ($f in $files) { if (-not (Send-ToDrive (Join-Path $LocalFolder $f))) { $driveOk = $false } }
+    if ($driveOk) { Write-Host "[EXPORT]   Drive:   $($Site.SiteName)/SoftAudit/$base`_*.csv"; exit 0 }
+    Write-Host '[EXPORT]   Drive failed.'
+}
+
+if ($Site.SharePath) {
     try {
-        if (-not (Test-Path $folder)) { New-Item -ItemType Directory -Path $folder -ErrorAction Stop | Out-Null }
-        if (-not (Test-Path $folder)) { throw 'not reachable' }
-        $summary | Export-Csv -Path (Join-Path $folder "$base`_summary.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
-        $software | Export-Csv -Path (Join-Path $folder "$base`_software.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
-        Write-Host "[EXPORT]   $folder\$base`_*.csv"
-        $saved = $true
+        Save-Csvs $Site.SharePath
+        Write-Host "[EXPORT]   Share:   $($Site.SharePath)\$base`_*.csv"
+        exit 0
     } catch {
-        Write-Host "[EXPORT]   Failed: $folder ($_)"
+        Write-Host "[EXPORT]   Share failed: $_"
     }
 }
-if (-not $saved) { exit 1 }
-exit 0
+
+if ($localOk) { Write-Host "[EXPORT]   Only saved locally. Please send $LocalFolder\$base`_*.csv to IT."; exit 0 }
+exit 1

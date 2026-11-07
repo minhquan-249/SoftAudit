@@ -5,6 +5,7 @@ using SoftAudit.Core;
 using SoftAudit.Core.Models;
 using SoftAudit.Exporter;
 using SoftAudit.License;
+using SoftAudit.Utils;
 
 int failed = 0;
 void Check(bool ok, string what) { Console.WriteLine((ok ? "PASS " : "FAIL ") + what); if (!ok) failed++; }
@@ -30,7 +31,7 @@ Check(LicenseChecker.StatusText(0) == "Not Activated", "status 0 (v1.x bug: 'UNL
 // Excel layout
 var r = new AuditResult
 {
-    HostName = "PC01", SerialNumber = "SN1", MachineType = "Server", IPv4 = "10.0.0.5", MAC = "AA-BB-CC-DD-EE-FF",
+    Site = "LITV", HostName = "PC01", SerialNumber = "SN1", MachineType = "Server", IPv4 = "10.0.0.5", MAC = "AA-BB-CC-DD-EE-FF",
     WindowsVersion = "Windows Server 2019 Standard (10.0.17763)", WindowsActivation = "Activated", WindowsChannel = "KMS",
     OfficeVersion = "Not Detected", OfficeActivation = "-", OfficeChannel = "-",
 };
@@ -41,13 +42,25 @@ ExcelExporter.Export(r, path);
 using (var wb = new XLWorkbook(path))
 {
     var s = wb.Worksheet("Summary");
-    Check(s.Cell(1, 6).GetString() == "Windows" && s.Cell(2, 7).GetString() == "Activation", "summary header groups");
-    Check(s.Cell(3, 3).GetString() == "Server" && s.Cell(3, 5).GetString() == "AA-BB-CC-DD-EE-FF", "summary type + MAC");
-    Check(s.Cell(3, 8).GetString() == "KMS", "summary windows channel");
+    Check(s.Cell(1, 7).GetString() == "Windows" && s.Cell(2, 8).GetString() == "Activation", "summary header groups");
+    Check(s.Cell(3, 1).GetString() == "LITV" && s.Cell(3, 4).GetString() == "Server" && s.Cell(3, 6).GetString() == "AA-BB-CC-DD-EE-FF", "summary site + type + MAC");
+    Check(s.Cell(3, 9).GetString() == "KMS", "summary windows channel");
     var sw = wb.Worksheet("Software");
     Check(sw.Cell(2, 3).GetString() == "Google Chrome" && sw.Cell(3, 6).GetString() == "N/A", "software rows");
     Check(sw.Cell(3, 1).GetString() == "PC01", "hostname repeated on software rows");
 }
+
+// site config (SoftAudit.ini)
+var ini = Path.Combine(Path.GetTempPath(), "SoftAudit.ini");
+File.WriteAllLines(ini, new[] { "; comment", "SiteName = HOT", "DriveUploadUrl=\"https://x/exec\"", @"SharePath=\\10.0.0.1\Data\SoftAudit", "Unknown=1" });
+var cfg = SiteConfig.Load(ini);
+Check(cfg.SiteName == "HOT" && cfg.DriveUploadUrl == "https://x/exec" && cfg.SharePath == @"\\10.0.0.1\Data\SoftAudit", "ini parse");
+Check(SiteConfig.Load(ini + ".missing").SiteName == "", "missing ini = no site");
+
+// Drive form + response (Apps Script contract: site, subFolder, fileName, fileData base64)
+var form = DriveUploader.BuildForm("HOT", "PC 01.xlsx", new byte[] { 0xFF, 0xFE, 0x00 });
+Check(form == "site=HOT&subFolder=SoftAudit&fileName=PC%2001.xlsx&fileData=%2F%2F4A", "drive form encoding");
+Check(DriveUploader.IsSuccess("{\"success\": true, \"fileId\":\"1\"}") && !DriveUploader.IsSuccess("{\"success\":false}"), "drive response parse");
 
 Console.WriteLine(failed == 0 ? "\nALL PASS" : $"\n{failed} FAILED");
 return failed == 0 ? 0 : 1;
