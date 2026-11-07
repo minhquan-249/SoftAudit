@@ -6,7 +6,7 @@ namespace SoftAudit.Utils
     /// <summary>
     /// Console + file log, same format as SM-Tool's Write-Log:
     ///   2026-11-07 16:55:01 [INFO   ] [HOT v2.0.0] message
-    /// File: C:\SoftAudit\Logs\HOST_yyyyMMdd.log, else %TEMP%\SoftAudit\Logs; if neither is writable, console only.
+    /// File: C:\SoftAudit\HOST_yyyyMMdd.log (next to the Excel files), else %TEMP%\SoftAudit; if neither is writable, console only.
     /// Logging must never break the audit, so every file error is swallowed.
     /// </summary>
     public static class Log
@@ -48,7 +48,7 @@ namespace SoftAudit.Utils
             _resolved = true;
 
             var name = $"{Environment.MachineName}_{DateTime.Now:yyyyMMdd}.log";
-            foreach (var dir in new[] { @"C:\SoftAudit\Logs", Path.Combine(Path.GetTempPath(), "SoftAudit", "Logs") })
+            foreach (var dir in new[] { @"C:\SoftAudit", Path.Combine(Path.GetTempPath(), "SoftAudit") })
             {
                 try
                 {

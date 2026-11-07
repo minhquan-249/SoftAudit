@@ -25,7 +25,7 @@ if (Test-Path $iniPath) {
 # ---------------- log: same file and format as SoftAudit.exe / SM-Tool, marked [PS] ----------------
 $Started = Get-Date
 $LogFile = $null
-foreach ($d in @('C:\SoftAudit\Logs', (Join-Path ([IO.Path]::GetTempPath()) 'SoftAudit\Logs'))) {
+foreach ($d in @('C:\SoftAudit', (Join-Path ([IO.Path]::GetTempPath()) 'SoftAudit'))) {
     try {
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -ErrorAction Stop | Out-Null }
         $f = Join-Path $d ('{0}_{1}.log' -f $env:COMPUTERNAME, (Get-Date -Format 'yyyyMMdd'))

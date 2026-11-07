@@ -21,7 +21,7 @@ Kết quả được lưu theo 3 tầng như SM-Tool:
 
 Nếu `SoftAudit.exe` không chạy được (máy thiếu .NET Framework 4.8, ví dụ Server 2008 R2 / 2012 R2 chưa cài), file bat tự chạy `SoftAudit-Fallback.ps1`: cùng logic, cùng 3 tầng, xuất 2 file CSV (`_summary.csv`, `_software.csv`).
 
-**Log**: `C:\SoftAudit\Logs\HOST_yyyyMMdd.log` (không ghi được thì `%TEMP%\SoftAudit\Logs`), cùng định dạng SM-Tool: `2026-11-07 16:55:01 [INFO   ] [HOT v2.0.0] ...`. Ghi START/END, cấu hình site, cách lấy IP, kết quả WMI license thô, số phần mềm, từng bước lưu/upload (lần thử, thời gian, lỗi). Script fallback ghi vào cùng file, đánh dấu `[PS]`. Log chỉ nằm trên máy, không đẩy lên Drive/share.
+**Log**: `C:\SoftAudit\HOST_yyyyMMdd.log`, nằm cùng file Excel (không ghi được thì `%TEMP%\SoftAudit`), cùng định dạng SM-Tool: `2026-11-07 16:55:01 [INFO   ] [HOT v2.0.0] ...`. Ghi START/END, cấu hình site, cách lấy IP, kết quả WMI license thô, số phần mềm, từng bước lưu/upload (lần thử, thời gian, lỗi). Script fallback ghi vào cùng file, đánh dấu `[PS]`. Log chỉ nằm trên máy, không đẩy lên Drive/share.
 
 Chạy tay: `SoftAudit.exe [/nopause]`. Thiếu `SoftAudit.ini` thì chỉ lưu `C:\SoftAudit`. Exit code 0 = đã lưu được ít nhất 1 nơi.
 
