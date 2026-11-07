@@ -24,6 +24,7 @@ namespace SoftAudit.Utils
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
                     var req = (HttpWebRequest)WebRequest.Create(url);
@@ -40,13 +41,16 @@ namespace SoftAudit.Utils
                     var text = reader.ReadToEnd();
 
                     if (IsSuccess(text))
+                    {
+                        Log.Info($"Drive upload OK: {Path.GetFileName(filePath)} ({body.Length} bytes form), attempt {attempt}, {sw.Elapsed.TotalSeconds:0}s, response {Short(text)}", console: false);
                         return true;
+                    }
 
-                    Console.WriteLine($"           Drive refused (attempt {attempt}/{maxAttempts}): {Short(text)}");
+                    Log.Warn($"           Drive refused (attempt {attempt}/{maxAttempts}, {sw.Elapsed.TotalSeconds:0}s): {Short(text)}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"           Drive error (attempt {attempt}/{maxAttempts}): {ex.Message}");
+                    Log.Warn($"           Drive error (attempt {attempt}/{maxAttempts}, {sw.Elapsed.TotalSeconds:0}s, timeout {timeoutSec}s): {ex.Message}");
                 }
 
                 if (attempt < maxAttempts)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Management;
 using SoftAudit.Core.Models;
+using SoftAudit.Utils;
 
 namespace SoftAudit.License
 {
@@ -59,10 +60,13 @@ namespace SoftAudit.License
                         list.Add((Convert.ToUInt32(obj["LicenseStatus"] ?? 0u),
                                   obj["Description"]?.ToString() ?? ""));
             }
-            catch
+            catch (Exception ex)
             {
                 // class missing (e.g. OfficeSoftwareProtectionProduct on Windows 10) or WMI error
+                Log.Info($"WMI {wmiClass} ({appId}) not readable: {ex.Message}", console: false);
             }
+            foreach (var (status, description) in list)
+                Log.Info($"WMI {wmiClass}: \"{description}\" LicenseStatus={status}", console: false);
             return list;
         }
 

@@ -38,7 +38,10 @@ namespace SoftAudit.Core.Collectors
                 var lower = app.RawName.ToLowerInvariant();
                 var isSuite = lower.StartsWith("microsoft office") || lower.StartsWith("microsoft 365");
                 if (isSuite && !NotOfficeSuite.Any(lower.Contains))
+                {
+                    Utils.Log.Info($"Office from Uninstall: {app.RawName}", console: false);
                     return app.RawName.Trim();
+                }
             }
 
             try

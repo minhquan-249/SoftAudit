@@ -22,11 +22,21 @@ namespace SoftAudit.Utils
 
         public static string GetActiveIP(bool isServer)
         {
-            var ip = isServer
-                ? FromRoute() ?? FromAdapters()
-                : FromAdapters() ?? FromRoute();
+            string? ip, how;
+            if (isServer)
+            {
+                ip = FromRoute(); how = "route";
+                if (ip == null) { ip = FromAdapters(); how = "adapters"; }
+            }
+            else
+            {
+                ip = FromAdapters(); how = "adapters";
+                if (ip == null) { ip = FromRoute(); how = "route"; }
+            }
+            if (ip == null) { ip = FromDns(); how = "dns"; }
 
-            return ip ?? FromDns() ?? "NoIP";
+            Log.Info($"IP {(ip ?? "NoIP")} via {(ip == null ? "none" : how)} ({(isServer ? "server" : "client")} order)", console: false);
+            return ip ?? "NoIP";
         }
 
         /// <summary>MAC (AA-BB-CC-DD-EE-FF) of the adapter that holds <paramref name="ip"/>.</summary>

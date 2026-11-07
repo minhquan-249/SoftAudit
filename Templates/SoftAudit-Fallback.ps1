@@ -22,6 +22,40 @@ if (Test-Path $iniPath) {
     }
 }
 
+# ---------------- log: same file and format as SoftAudit.exe / SM-Tool, marked [PS] ----------------
+$Started = Get-Date
+$LogFile = $null
+foreach ($d in @('C:\SoftAudit\Logs', (Join-Path ([IO.Path]::GetTempPath()) 'SoftAudit\Logs'))) {
+    try {
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -ErrorAction Stop | Out-Null }
+        $f = Join-Path $d ('{0}_{1}.log' -f $env:COMPUTERNAME, (Get-Date -Format 'yyyyMMdd'))
+        Add-Content -Path $f -Value '' -ErrorAction Stop
+        $LogFile = $f; break
+    } catch { }
+}
+
+function Write-Log($Message, $Level = 'INFO') {
+    if (-not $LogFile) { return }
+    try {
+        $tag = if ($Site.SiteName) { "$($Site.SiteName) " } else { '' }
+        $line = '{0} [{1}] [{2}v{3}] [PS] {4}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level.PadRight(7), $tag, $ToolVersion, (("$Message" -replace '\s*\r?\n\s*', ' ').Trim())
+        Add-Content -Path $LogFile -Value $line -ErrorAction Stop
+    } catch { }   # logging must never stop the audit
+}
+
+# console + log
+function Say($Message, $Level = 'INFO') { Write-Host $Message; Write-Log $Message $Level }
+
+function Finish($Code) {
+    Write-Log ('===== END ===== exit code {0}, {1:0}s' -f $Code, ((Get-Date) - $Started).TotalSeconds)
+    if ($LogFile) { Write-Host "`nLog: $LogFile" }
+    exit $Code
+}
+
+Write-Log "===== START ===== user $env:USERDOMAIN\$env:USERNAME, PowerShell $($PSVersionTable.PSVersion), script $ScriptDir"
+if (Test-Path $iniPath) { Write-Log "Config: $iniPath | Drive: $(if ($Site.DriveUploadUrl) { 'on' } else { 'off' }) | Share: $(if ($Site.SharePath) { $Site.SharePath } else { 'off' })" }
+else { Write-Log "Config: $iniPath not found -> local only" 'WARNING' }
+
 Write-Host "SoftAudit v$ToolVersion (PowerShell fallback) - site: $(if ($Site.SiteName) { $Site.SiteName } else { 'none, local only' })`n"
 
 function Get-Wmi1($class, $prop) {
@@ -188,10 +222,11 @@ $summary = New-Object PSObject -Property @{
 } | Select-Object Site, HostName, 'Serial Number', 'Machine Type', IPv4, MAC, 'Windows Version', 'Windows Activation',
     'Windows Channel', 'Office Version', 'Office Activation', 'Office Channel', 'Check Date', 'Tool Version'
 
-Write-Host "[SYSTEM]   $hostName | $machineType | $ip | $mac | SN $serial"
-Write-Host "[WINDOWS]  $windowsVersion | $($win[0]) ($($win[1]))"
-Write-Host "[OFFICE]   $officeVersion | $($off[0]) ($($off[1]))"
-Write-Host "[SOFTWARE] $($software.Count) applications`n"
+Say "[SYSTEM]   $hostName | $machineType | $ip | $mac | SN $serial"
+Say "[WINDOWS]  $windowsVersion | $($win[0]) ($($win[1]))"
+Say "[OFFICE]   $officeVersion | $($off[0]) ($($off[1]))"
+Write-Log "Software: $($entries.Count) registry entries -> $($software.Count) after filter/dedup"
+Say "[SOFTWARE] $($software.Count) applications`n"
 
 # ---------------- save: local, then Drive, then share (same as SM-Tool) ----------------
 $base = '{0}_{1}_{2}' -f $hostName, $ip.Replace(':', '_'), (Get-Date -Format 'yyyyMMdd')
@@ -216,10 +251,10 @@ function Send-ToDrive($path) {
         try {
             $wc = New-Object System.Net.WebClient
             $resp = [Text.Encoding]::UTF8.GetString($wc.UploadValues($Site.DriveUploadUrl, 'POST', $form))
-            if ($resp.Replace(' ', '') -match '"success":true') { return $true }
-            Write-Host "           Drive refused (attempt $attempt/3): $resp"
+            if ($resp.Replace(' ', '') -match '"success":true') { Write-Log "Drive upload OK: $([IO.Path]::GetFileName($path)), attempt $attempt, response $resp"; return $true }
+            Say "           Drive refused (attempt $attempt/3): $resp" 'WARNING'
         } catch {
-            Write-Host "           Drive error (attempt $attempt/3): $_"
+            Say "           Drive error (attempt $attempt/3): $_" 'WARNING'
         }
         if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
     }
@@ -230,28 +265,28 @@ $localOk = $false
 try {
     Save-Csvs $LocalFolder
     $localOk = $true
-    Write-Host "[EXPORT]   Local:   $LocalFolder\$base`_*.csv"
+    Say "[EXPORT]   Local:   $LocalFolder\$base`_*.csv"
 } catch {
-    Write-Host "[EXPORT]   Local failed: $_"
+    Say "[EXPORT]   Local failed: $_" 'ERROR'
 }
 
 if ($localOk -and $Site.DriveUploadUrl) {
-    Write-Host '[EXPORT]   Uploading to Google Drive...'
+    Say '[EXPORT]   Uploading to Google Drive...'
     $driveOk = $true
     foreach ($f in $files) { if (-not (Send-ToDrive (Join-Path $LocalFolder $f))) { $driveOk = $false } }
-    if ($driveOk) { Write-Host "[EXPORT]   Drive:   $($Site.SiteName)/SoftAudit/$base`_*.csv"; exit 0 }
-    Write-Host '[EXPORT]   Drive failed.'
+    if ($driveOk) { Say "[EXPORT]   Drive:   $($Site.SiteName)/SoftAudit/$base`_*.csv"; Finish 0 }
+    Say '[EXPORT]   Drive failed.' 'WARNING'
 }
 
 if ($Site.SharePath) {
     try {
         Save-Csvs $Site.SharePath
-        Write-Host "[EXPORT]   Share:   $($Site.SharePath)\$base`_*.csv"
-        exit 0
+        Say "[EXPORT]   Share:   $($Site.SharePath)\$base`_*.csv"
+        Finish 0
     } catch {
-        Write-Host "[EXPORT]   Share failed: $_"
+        Say "[EXPORT]   Share failed: $_" 'WARNING'
     }
 }
 
-if ($localOk) { Write-Host "[EXPORT]   Only saved locally. Please send $LocalFolder\$base`_*.csv to IT."; exit 0 }
-exit 1
+if ($localOk) { Say "[EXPORT]   Only saved locally. Please send $LocalFolder\$base`_*.csv to IT." 'WARNING'; Finish 0 }
+Finish 1

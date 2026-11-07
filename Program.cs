@@ -23,8 +23,16 @@ namespace SoftAudit
         public static int Main(string[] args)
         {
             Console.OutputEncoding = new System.Text.UTF8Encoding(false);
-            var site = SiteConfig.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SoftAudit.ini"));
+            var iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SoftAudit.ini");
+            var site = SiteConfig.Load(iniPath);
+            Log.Site = site.SiteName;
+            var started = DateTime.Now;
+
             Console.WriteLine($"SoftAudit v{ToolVersion}" + (site.SiteName == "" ? " (no SoftAudit.ini: local only)" : $" - {site.SiteName}"));
+            Log.Info($"===== START ===== user {Environment.UserDomainName}\\{Environment.UserName}, exe {AppDomain.CurrentDomain.BaseDirectory}", console: false);
+            Log.Info(File.Exists(iniPath)
+                ? $"Config: {iniPath} | Drive: {(site.DriveUploadUrl == "" ? "off" : "on")} | Share: {(site.SharePath == "" ? "off" : site.SharePath)}"
+                : $"Config: {iniPath} not found -> local only", console: false);
             Console.WriteLine("Starting audit...\n");
 
             var pause = !Array.Exists(args, a => a.Equals("/nopause", StringComparison.OrdinalIgnoreCase));
@@ -39,7 +47,12 @@ namespace SoftAudit
             catch (Exception ex)
             {
                 Console.WriteLine("[FATAL] " + ex.Message);
+                Log.Error("FATAL " + ex, console: false);
             }
+
+            Log.Info($"===== END ===== exit code {exitCode}, {(DateTime.Now - started).TotalSeconds:0}s", console: false);
+            if (Log.FilePath != null)
+                Console.WriteLine($"\nLog: {Log.FilePath}");
 
             if (pause && !Console.IsInputRedirected)
             {
@@ -58,22 +71,22 @@ namespace SoftAudit
             r.SerialNumber = SystemHelper.GetSerialNumber();
             r.IPv4 = NetworkHelper.GetActiveIP(isServer);
             r.MAC = NetworkHelper.GetMac(r.IPv4);
-            Console.WriteLine($"[SYSTEM]   {r.HostName} | {r.MachineType} | {r.IPv4} | {r.MAC} | SN {r.SerialNumber}");
+            Log.Info($"[SYSTEM]   {r.HostName} | {r.MachineType} | {r.IPv4} | {r.MAC} | SN {r.SerialNumber}");
 
             r.WindowsVersion = SystemHelper.GetOS();
             var win = LicenseChecker.CheckWindows();
             r.WindowsActivation = win.Activation;
             r.WindowsChannel = win.Channel;
-            Console.WriteLine($"[WINDOWS]  {r.WindowsVersion} | {r.WindowsActivation} ({r.WindowsChannel})");
+            Log.Info($"[WINDOWS]  {r.WindowsVersion} | {r.WindowsActivation} ({r.WindowsChannel})");
 
             var (officeVersion, office) = OfficeCollector.Collect();
             r.OfficeVersion = officeVersion;
             r.OfficeActivation = office.Activation;
             r.OfficeChannel = office.Channel;
-            Console.WriteLine($"[OFFICE]   {r.OfficeVersion} | {r.OfficeActivation} ({r.OfficeChannel})");
+            Log.Info($"[OFFICE]   {r.OfficeVersion} | {r.OfficeActivation} ({r.OfficeChannel})");
 
             r.Software = SoftwareScanner.Scan();
-            Console.WriteLine($"[SOFTWARE] {r.Software.Count} applications");
+            Log.Info($"[SOFTWARE] {r.Software.Count} applications");
 
             return r;
         }
@@ -91,30 +104,30 @@ namespace SoftAudit
             {
                 Directory.CreateDirectory(LocalFolder);
                 ExcelExporter.Export(r, localFile);
-                Console.WriteLine($"\n[EXPORT]   Local:   {localFile}");
+                Log.Info($"\n[EXPORT]   Local:   {localFile}");
             }
             catch (Exception ex)
             {
                 // without a local copy there is nothing to upload; try writing straight to the share
-                Console.WriteLine($"\n[EXPORT]   Local failed: {ex.Message}");
+                Log.Error($"\n[EXPORT]   Local failed: {ex.Message}");
                 return site.SharePath != "" && TryShare(site.SharePath, fileName, dest => ExcelExporter.Export(r, dest));
             }
 
             if (site.DriveUploadUrl != "")
             {
-                Console.WriteLine("[EXPORT]   Uploading to Google Drive...");
+                Log.Info("[EXPORT]   Uploading to Google Drive...");
                 if (DriveUploader.Upload(site.DriveUploadUrl, site.SiteName, localFile))
                 {
-                    Console.WriteLine($"[EXPORT]   Drive:   {site.SiteName}/{DriveUploader.SubFolder}/{fileName}");
+                    Log.Info($"[EXPORT]   Drive:   {site.SiteName}/{DriveUploader.SubFolder}/{fileName}");
                     return true;
                 }
-                Console.WriteLine("[EXPORT]   Drive failed.");
+                Log.Warn("[EXPORT]   Drive failed.");
             }
 
             if (site.SharePath != "" && TryShare(site.SharePath, fileName, dest => File.Copy(localFile, dest, true)))
                 return true;
 
-            Console.WriteLine($"[EXPORT]   Only saved locally. Please send {localFile} to IT.");
+            Log.Warn($"[EXPORT]   Only saved locally. Please send {localFile} to IT.");
             return true;
         }
 
@@ -126,12 +139,12 @@ namespace SoftAudit
                 Directory.CreateDirectory(sharePath);
                 var dest = Path.Combine(sharePath, fileName);
                 write(dest);
-                Console.WriteLine($"[EXPORT]   Share:   {dest}");
+                Log.Info($"[EXPORT]   Share:   {dest}");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[EXPORT]   Share failed: {ex.Message}");
+                Log.Warn($"[EXPORT]   Share failed: {ex.Message}");
                 return false;
             }
         }

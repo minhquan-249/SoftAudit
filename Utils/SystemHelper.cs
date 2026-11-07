@@ -36,8 +36,9 @@ namespace SoftAudit.Utils
                     using (obj)
                         return obj[property]?.ToString() ?? "";
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn($"WMI {wmiClass}.{property} failed: {ex.Message}", console: false);
             }
             return "";
         }

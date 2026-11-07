@@ -51,7 +51,8 @@ namespace SoftAudit.Core
         /// <summary>Filtered, renamed and de-duplicated list, sorted by name.</summary>
         public static List<Software> Scan()
         {
-            return ReadUninstallEntries(machineOnly: false)
+            var all = ReadUninstallEntries(machineOnly: false).ToList();
+            var list = all
                 .Where(s => Keep(s.RawName))
                 .Select(s => { s.Name = Normalize(s.RawName); return s; })
                 .Where(s => s.Name != "")
@@ -59,6 +60,8 @@ namespace SoftAudit.Core
                 .Select(g => g.First())
                 .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            Utils.Log.Info($"Software: {all.Count} registry entries -> {list.Count} after filter/dedup", console: false);
+            return list;
         }
 
         /// <summary>Every entry with a DisplayName, from HKLM (64 + 32-bit) and, unless machineOnly, HKCU.</summary>
