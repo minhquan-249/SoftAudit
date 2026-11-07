@@ -11,3 +11,10 @@ obj/
 *.exe
 
 publish/
+Tests/**/bin/
+Tests/**/obj/
+
+# real site configs hold the Drive upload URL (public repo) - only Sites/_example.ini is committed
+Sites/*.ini
+!Sites/_example.ini
+Dist/
