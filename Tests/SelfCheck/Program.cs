@@ -48,6 +48,7 @@ using (var wb = new XLWorkbook(path))
     var sw = wb.Worksheet("Software");
     Check(sw.Cell(2, 3).GetString() == "Google Chrome" && sw.Cell(3, 6).GetString() == "N/A", "software rows");
     Check(sw.Cell(3, 1).GetString() == "PC01", "hostname repeated on software rows");
+    Check(s.Column(7).Width == 42 && sw.Column(3).Width == 50, "fixed column widths");
 }
 
 // site config (SoftAudit.ini)

@@ -59,7 +59,7 @@ namespace SoftAudit.Exporter
             Highlight(ws.Cell(3, 8), r.WindowsActivation);
             Highlight(ws.Cell(3, 11), r.OfficeActivation);
 
-            Finish(ws, 2);
+            Finish(ws, 2, SummaryWidths);
         }
 
         static void WriteSoftware(IXLWorksheet ws, AuditResult r)
@@ -87,7 +87,7 @@ namespace SoftAudit.Exporter
             if (r.Software.Count > 0)
                 ws.Range(1, 1, row - 1, headers.Length).SetAutoFilter();
 
-            Finish(ws, 1);
+            Finish(ws, 1, SoftwareWidths);
         }
 
         static void Group(IXLWorksheet ws, int firstCol, string title, params string[] columns)
@@ -107,15 +107,15 @@ namespace SoftAudit.Exporter
                 cell.Style.Fill.BackgroundColor = XLColor.LightPink;
         }
 
-        static void Finish(IXLWorksheet ws, int headerRows)
+        // Fixed widths: auto-fit (font measuring) took ~3 s per file.
+        static readonly double[] SummaryWidths = { 9, 20, 16, 11, 15, 19, 42, 18, 10, 42, 24, 13, 17, 11 };
+        static readonly double[] SoftwareWidths = { 20, 15, 50, 18, 32, 12 };
+
+        static void Finish(IXLWorksheet ws, int headerRows, double[] widths)
         {
             ws.SheetView.FreezeRows(headerRows);
-            ws.Columns().AdjustToContents(1, 200);
-            foreach (var col in ws.ColumnsUsed())
-            {
-                if (col.Width > 60) col.Width = 60;
-                if (col.Width < 10) col.Width = 10;
-            }
+            for (int c = 0; c < widths.Length; c++)
+                ws.Column(c + 1).Width = widths[c];
 
             var used = ws.RangeUsed();
             if (used != null)
