@@ -11,3 +11,5 @@ obj/
 *.exe
 
 publish/
+Tests/**/bin/
+Tests/**/obj/

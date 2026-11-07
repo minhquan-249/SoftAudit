@@ -1,93 +1,126 @@
-﻿using SoftAudit.Core;
-using SoftAudit.Exporter;
-using SoftAudit.Utils;
 using System;
+using System.IO;
+using SoftAudit.Core;
+using SoftAudit.Core.Collectors;
+using SoftAudit.Core.Models;
+using SoftAudit.Exporter;
+using SoftAudit.License;
+using SoftAudit.Utils;
 
-Console.WriteLine("SoftAudit v1.4.0");
-Console.WriteLine("Starting audit...\n");
-
-try
+namespace SoftAudit
 {
-
-    // -------------------------
-    // RUN AUDIT
-    // -------------------------
-    var service = new AuditService();
-    var result = service.Run();
-
-    // -------------------------
-    // BUILD FILE PATH
-    // -------------------------
-    var machine = result.HostName;
-
-    string ip = result.IPv4.Replace(":", "_");
-
-    var time = DateTime.Now.ToString("yyyyMMdd");
-
-    string folder = @"C:\SoftAudit";
-
-    if (!Directory.Exists(folder))
+    public static class Program
     {
-        Directory.CreateDirectory(folder);
-    }
+        public const string ToolVersion = "2.0.0";
 
-    string path = $@"{folder}\{machine}_{ip}_{time}.xlsx";
+        const string DefaultSharePath = @"\\10.168.109.254\Software\1. Tool Soft Audit\Data";
+        const string LocalFolder = @"C:\SoftAudit";
 
-    var exporter = new ExcelExporter();
-
-    string networkPath = @"\\10.168.109.254\Software\1. Tool Soft Audit\Data";
-
-    string fileName = $"{machine}_{ip}_{time}.xlsx";
-
-    string networkFile = Path.Combine(networkPath, fileName);
-    string localFile = Path.Combine(folder, fileName);
-
-    try
-    {
-        // -------------------------
-        // TRY NETWORK FIRST
-        // -------------------------
-
-        if (Directory.Exists(networkPath))
+        /// <summary>
+        /// SoftAudit.exe [shareFolder] [/nopause]
+        /// shareFolder overrides the default network folder (e.g. for another site).
+        /// Exit code 0 = at least the local copy was saved, 1 = nothing saved.
+        /// </summary>
+        public static int Main(string[] args)
         {
-            exporter.Export(result, networkFile);
-            Console.WriteLine($"[EXPORT] Network success: {networkFile}");
-        }
-        else
-        {
-            throw new Exception("Network path not reachable");
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[NETWORK] Failed: {ex.Message}");
+            Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+            Console.WriteLine($"SoftAudit v{ToolVersion}");
+            Console.WriteLine("Starting audit...\n");
 
-        // -------------------------
-        // FALLBACK LOCAL
-        // -------------------------
-        try
-        {
-            if (!Directory.Exists(folder))
+            var sharePath = DefaultSharePath;
+            var pause = true;
+            foreach (var a in args)
             {
-                Directory.CreateDirectory(folder);
+                if (a.Equals("/nopause", StringComparison.OrdinalIgnoreCase)) pause = false;
+                else sharePath = a;
             }
 
-            exporter.Export(result, localFile);
-            Console.WriteLine($"[EXPORT] Local fallback: {localFile}");
+            int exitCode = 1;
+            try
+            {
+                var result = Collect();
+                exitCode = Save(result, sharePath) ? 0 : 1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[FATAL] " + ex.Message);
+            }
+
+            if (pause && !Console.IsInputRedirected)
+            {
+                Console.WriteLine("\nPress any key to exit...");
+                Console.ReadKey(true);
+            }
+            return exitCode;
         }
-        catch (Exception inner)
+
+        static AuditResult Collect()
         {
-            Console.WriteLine($"[EXPORT] Local fallback failed: {inner.Message}");
+            var r = new AuditResult { HostName = SystemHelper.GetHostName() };
+
+            var isServer = SystemHelper.IsServer();
+            r.MachineType = isServer ? "Server" : "Client";
+            r.SerialNumber = SystemHelper.GetSerialNumber();
+            r.IPv4 = NetworkHelper.GetActiveIP(isServer);
+            r.MAC = NetworkHelper.GetMac(r.IPv4);
+            Console.WriteLine($"[SYSTEM]   {r.HostName} | {r.MachineType} | {r.IPv4} | {r.MAC} | SN {r.SerialNumber}");
+
+            r.WindowsVersion = SystemHelper.GetOS();
+            var win = LicenseChecker.CheckWindows();
+            r.WindowsActivation = win.Activation;
+            r.WindowsChannel = win.Channel;
+            Console.WriteLine($"[WINDOWS]  {r.WindowsVersion} | {r.WindowsActivation} ({r.WindowsChannel})");
+
+            var (officeVersion, office) = OfficeCollector.Collect();
+            r.OfficeVersion = officeVersion;
+            r.OfficeActivation = office.Activation;
+            r.OfficeChannel = office.Channel;
+            Console.WriteLine($"[OFFICE]   {r.OfficeVersion} | {r.OfficeActivation} ({r.OfficeChannel})");
+
+            r.Software = SoftwareScanner.Scan();
+            Console.WriteLine($"[SOFTWARE] {r.Software.Count} applications");
+
+            return r;
+        }
+
+        /// <summary>Always writes C:\SoftAudit first (nothing is lost if the share is down), then copies to the share.</summary>
+        static bool Save(AuditResult r, string sharePath)
+        {
+            var fileName = $"{r.HostName}_{r.IPv4.Replace(":", "_")}_{r.CheckDate:yyyyMMdd}.xlsx";
+            var localFile = Path.Combine(LocalFolder, fileName);
+            var shareFile = Path.Combine(sharePath, fileName);
+            bool localOk = false, shareOk = false;
+
+            try
+            {
+                Directory.CreateDirectory(LocalFolder);
+                ExcelExporter.Export(r, localFile);
+                localOk = true;
+                Console.WriteLine($"\n[EXPORT]   Local:   {localFile}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n[EXPORT]   Local failed: {ex.Message}");
+            }
+
+            try
+            {
+                if (!Directory.Exists(sharePath))
+                    throw new IOException("share not reachable");
+                if (localOk)
+                    File.Copy(localFile, shareFile, overwrite: true);
+                else
+                    ExcelExporter.Export(r, shareFile);
+                shareOk = true;
+                Console.WriteLine($"[EXPORT]   Network: {shareFile}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EXPORT]   Network failed: {ex.Message}");
+                if (localOk)
+                    Console.WriteLine($"           Please send {localFile} to IT.");
+            }
+            return localOk || shareOk;
         }
     }
-}
-catch (Exception ex)
-{
-    Console.WriteLine("[FATAL] Unexpected error:");
-    Console.WriteLine(ex.Message);
-}
-finally
-{
-    Console.WriteLine("\nPress any key to exit...");
-    Console.ReadKey();
 }

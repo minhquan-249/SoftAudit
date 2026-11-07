@@ -5,69 +5,41 @@ namespace SoftAudit.Utils
 {
     public static class SystemHelper
     {
-        // -------------------------
-        // OS
-        // -------------------------
+        public static string GetHostName() => Environment.MachineName;
+
+        /// <summary>"Windows Server 2019 Standard (10.0.17763)".</summary>
         public static string GetOS()
         {
-            try
-            {
-                using var searcher = new ManagementObjectSearcher(
-                    "SELECT Caption, Version FROM Win32_OperatingSystem");
-
-                foreach (ManagementObject os in searcher.Get())
-                {
-                    string caption = os["Caption"]?.ToString() ?? "";
-                    string version = os["Version"]?.ToString() ?? "";
-
-                    return $"{caption} ({version})";
-                }
-            }
-            catch
-            {
-            }
-
-            return "Unknown OS";
+            var caption = Wmi("Win32_OperatingSystem", "Caption");
+            var version = Wmi("Win32_OperatingSystem", "Version");
+            return caption == "" ? "Unknown OS" : $"{caption.Trim()} ({version})";
         }
 
-        // -------------------------
-        // HOST NAME
-        // -------------------------
-        public static string GetHostName()
-        {
-            try
-            {
-                return Environment.MachineName;
-            }
-            catch
-            {
-                return "Unknown Host";
-            }
-        }
+        /// <summary>
+        /// Win32_OperatingSystem.ProductType: 1 = workstation, 2 = domain controller, 3 = server.
+        /// </summary>
+        public static bool IsServer() => Wmi("Win32_OperatingSystem", "ProductType") is "2" or "3";
 
-        // -------------------------
-        // SERIAL NUMBER (BIOS)
-        // -------------------------
         public static string GetSerialNumber()
         {
+            var serial = Wmi("Win32_BIOS", "SerialNumber").Trim();
+            return serial == "" ? "Unknown" : serial;
+        }
+
+        /// <summary>First value of one WMI property, "" when missing or on error.</summary>
+        public static string Wmi(string wmiClass, string property)
+        {
             try
             {
-                using var searcher = new ManagementObjectSearcher(
-                    "SELECT SerialNumber FROM Win32_BIOS");
-
+                using var searcher = new ManagementObjectSearcher($"SELECT {property} FROM {wmiClass}");
                 foreach (ManagementObject obj in searcher.Get())
-                {
-                    string serial = obj["SerialNumber"]?.ToString() ?? "";
-
-                    if (!string.IsNullOrWhiteSpace(serial))
-                        return serial.Trim();
-                }
+                    using (obj)
+                        return obj[property]?.ToString() ?? "";
             }
             catch
             {
             }
-
-            return "Unknown";
+            return "";
         }
     }
 }

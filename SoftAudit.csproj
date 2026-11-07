@@ -1,23 +1,35 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- .NET Framework 4.8: built into Windows 10/11 and Server 2019/2022, so no runtime has to ship with the exe -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- AnyCPU without 32-bit preference so the registry is read in its native (64-bit) view -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Version>2.0.0</Version>
+    <AssemblyTitle>SoftAudit</AssemblyTitle>
+    <Product>SoftAudit</Product>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
-    <PackageReference Include="System.Management" Version="10.0.8" />
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.8" />
+    <!-- Costura embeds ClosedXML and its dependencies into SoftAudit.exe (one file to copy) -->
+    <PackageReference Include="Costura.Fody" Version="6.0.0" PrivateAssets="all" />
+    <PackageReference Include="Fody" Version="6.9.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
+
   <ItemGroup>
-    <None Update="Config\software_rules.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <Reference Include="System.Management" />
   </ItemGroup>
-  <PropertyGroup>
-  <Version>1.4.0</Version>
-</PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tests/**" />
+    <None Remove="Tests/**" />
+  </ItemGroup>
+
 </Project>

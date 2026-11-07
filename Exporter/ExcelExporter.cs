@@ -1,106 +1,128 @@
 using ClosedXML.Excel;
 using SoftAudit.Core.Models;
-using System;
 
 namespace SoftAudit.Exporter
 {
-    public class ExcelExporter
+    /// <summary>
+    /// One workbook per machine:
+    /// - "Summary": one row (machine, network, Windows, Office) with a two-level header, as in v1.4.
+    /// - "Software": installed software, one row per application, as in v1.3.
+    /// HostName/IPv4 are repeated on every row so files from many machines can be stacked together.
+    /// </summary>
+    public static class ExcelExporter
     {
-        public void Export(AuditResult data, string filePath)
+        public static void Export(AuditResult r, string filePath)
         {
-            using var workbook = new XLWorkbook();
-            var worksheet = workbook.Worksheets.Add("Audit Result");
+            using var wb = new XLWorkbook();
+            WriteSummary(wb.Worksheets.Add("Summary"), r);
+            WriteSoftware(wb.Worksheets.Add("Software"), r);
+            wb.SaveAs(filePath);
+        }
 
-            // -------------------------
-            // HEADER ROW 1 (GROUP)
-            // -------------------------
-            worksheet.Cell(1, 1).Value = "HostName";
-            worksheet.Cell(1, 2).Value = "SerialNumber";
-            worksheet.Cell(1, 3).Value = "IPv4";
-
-            worksheet.Cell(1, 4).Value = "Windows";
-            worksheet.Range(1, 4, 1, 6).Merge();
-
-            worksheet.Cell(1, 7).Value = "Office";
-            worksheet.Range(1, 7, 1, 8).Merge();
-
-            // ✅ NEW COLUMN
-            worksheet.Cell(1, 9).Value = "Check Date";
-            worksheet.Range(1, 9, 2, 9).Merge();
-
-            // -------------------------
-            // HEADER ROW 2 (DETAIL)
-            // -------------------------
-            worksheet.Cell(2, 4).Value = "Version";
-            worksheet.Cell(2, 5).Value = "Activation";
-            worksheet.Cell(2, 6).Value = "Type";
-
-            worksheet.Cell(2, 7).Value = "Version";
-            worksheet.Cell(2, 8).Value = "Activation";
-
-            // merge static columns
-            worksheet.Range(1, 1, 2, 1).Merge();
-            worksheet.Range(1, 2, 2, 2).Merge();
-            worksheet.Range(1, 3, 2, 3).Merge();
-
-            // -------------------------
-            // HEADER STYLE
-            // -------------------------
-            var headerRange = worksheet.Range(1, 1, 2, 9);
-
-            headerRange.Style.Font.Bold = true;
-            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
-            headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            headerRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-
-            // -------------------------
-            // DATA
-            // -------------------------
-            int col = 1;
-            int row = 3;
-
-            worksheet.Cell(row, col++).Value = data.HostName;
-            worksheet.Cell(row, col++).Value = data.SerialNumber;
-            worksheet.Cell(row, col++).Value = data.IPv4;
-
-            worksheet.Cell(row, col++).Value = data.WindowsVersion;
-            worksheet.Cell(row, col++).Value = data.WindowsLicense;
-            worksheet.Cell(row, col++).Value = data.WindowsLicenseType;
-
-            worksheet.Cell(row, col++).Value = data.OfficeVersion;
-            worksheet.Cell(row, col++).Value = data.OfficeLicense;
-
-            // ✅ CHECK DATE
-            worksheet.Cell(row, col).Value = DateTime.Now;
-            worksheet.Cell(row, col++).Style.DateFormat.Format = "yyyy-MM-dd";
-
-            // -------------------------
-            // FORMAT
-            // -------------------------
-            worksheet.Column(1).Width = 20;
-            worksheet.Column(2).Width = 20;
-            worksheet.Column(3).Width = 18;
-
-            worksheet.Column(4).Width = 40;
-            worksheet.Column(5).Width = 15;
-            worksheet.Column(6).Width = 12;
-
-            worksheet.Column(7).Width = 40;
-            worksheet.Column(8).Width = 18;
-
-            // ✅ NEW COLUMN WIDTH
-            worksheet.Column(9).Width = 22;
-
-            worksheet.SheetView.FreezeRows(2);
-
-            var usedRange = worksheet.RangeUsed();
-            if (usedRange != null)
+        static void WriteSummary(IXLWorksheet ws, AuditResult r)
+        {
+            // row 1 = group, row 2 = column; single columns are merged over both rows
+            string[] single = { "HostName", "Serial Number", "Machine Type", "IPv4", "MAC" };
+            for (int c = 1; c <= single.Length; c++)
             {
-                usedRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-                usedRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+                ws.Cell(1, c).Value = single[c - 1];
+                ws.Range(1, c, 2, c).Merge();
             }
 
-            workbook.SaveAs(filePath);
+            Group(ws, 6, "Windows", "Version", "Activation", "Channel");
+            Group(ws, 9, "Office", "Version", "Activation", "Channel");
+
+            ws.Cell(1, 12).Value = "Check Date";
+            ws.Range(1, 12, 2, 12).Merge();
+            ws.Cell(1, 13).Value = "Tool Version";
+            ws.Range(1, 13, 2, 13).Merge();
+
+            object[] values =
+            {
+                r.HostName, r.SerialNumber, r.MachineType, r.IPv4, r.MAC,
+                r.WindowsVersion, r.WindowsActivation, r.WindowsChannel,
+                r.OfficeVersion, r.OfficeActivation, r.OfficeChannel,
+            };
+            for (int c = 1; c <= values.Length; c++)
+                ws.Cell(3, c).Value = values[c - 1]?.ToString() ?? "";
+
+            ws.Cell(3, 12).Value = r.CheckDate;
+            ws.Cell(3, 12).Style.DateFormat.Format = "yyyy-MM-dd HH:mm";
+            ws.Cell(3, 13).Value = Program.ToolVersion;
+
+            var header = ws.Range(1, 1, 2, 13);
+            header.Style.Font.Bold = true;
+            header.Style.Fill.BackgroundColor = XLColor.LightGray;
+            header.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            header.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+            Highlight(ws.Cell(3, 7), r.WindowsActivation);
+            Highlight(ws.Cell(3, 10), r.OfficeActivation);
+
+            Finish(ws, 2);
+        }
+
+        static void WriteSoftware(IXLWorksheet ws, AuditResult r)
+        {
+            string[] headers = { "HostName", "IPv4", "Application", "Version", "Publisher", "Install Date" };
+            for (int c = 1; c <= headers.Length; c++)
+                ws.Cell(1, c).Value = headers[c - 1];
+
+            var header = ws.Range(1, 1, 1, headers.Length);
+            header.Style.Font.Bold = true;
+            header.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+            int row = 2;
+            foreach (var s in r.Software)
+            {
+                ws.Cell(row, 1).Value = r.HostName;
+                ws.Cell(row, 2).Value = r.IPv4;
+                ws.Cell(row, 3).Value = s.Name;
+                ws.Cell(row, 4).Value = s.Version;
+                ws.Cell(row, 5).Value = s.Publisher;
+                ws.Cell(row, 6).Value = s.InstallDate == "" ? "N/A" : s.InstallDate;
+                row++;
+            }
+
+            if (r.Software.Count > 0)
+                ws.Range(1, 1, row - 1, headers.Length).SetAutoFilter();
+
+            Finish(ws, 1);
+        }
+
+        static void Group(IXLWorksheet ws, int firstCol, string title, params string[] columns)
+        {
+            ws.Cell(1, firstCol).Value = title;
+            ws.Range(1, firstCol, 1, firstCol + columns.Length - 1).Merge();
+            for (int i = 0; i < columns.Length; i++)
+                ws.Cell(2, firstCol + i).Value = columns[i];
+        }
+
+        /// <summary>Green when activated, red when not; leaves Unknown / "-" uncoloured.</summary>
+        static void Highlight(IXLCell cell, string activation)
+        {
+            if (activation.StartsWith("Activated") || activation.StartsWith("Microsoft 365"))
+                cell.Style.Fill.BackgroundColor = XLColor.LightGreen;
+            else if (activation.StartsWith("Not Activated") || activation.Contains("Grace"))
+                cell.Style.Fill.BackgroundColor = XLColor.LightPink;
+        }
+
+        static void Finish(IXLWorksheet ws, int headerRows)
+        {
+            ws.SheetView.FreezeRows(headerRows);
+            ws.Columns().AdjustToContents(1, 200);
+            foreach (var col in ws.ColumnsUsed())
+            {
+                if (col.Width > 60) col.Width = 60;
+                if (col.Width < 10) col.Width = 10;
+            }
+
+            var used = ws.RangeUsed();
+            if (used != null)
+            {
+                used.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                used.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            }
         }
     }
 }

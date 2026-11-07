@@ -1,89 +1,54 @@
-using Microsoft.Win32;
 using System;
+using System.Linq;
+using Microsoft.Win32;
+using SoftAudit.Core.Models;
+using SoftAudit.License;
 
 namespace SoftAudit.Core.Collectors
 {
-    /// <summary>
-    /// Collects Office-related information:
-    /// - Version
-    /// - License status
-    /// </summary>
-    public class OfficeCollector
+    public static class OfficeCollector
     {
-        public (string Version, string License) Collect()
+        static readonly string[] NotOfficeSuite =
+            { "update", "click-to-run", "proofing", "language", "mui", "viewer", "compatibility", "web components" };
+
+        public static (string Version, LicenseInfo License) Collect()
         {
-            string version = GetOfficeVersion();
-            string license = new License.Checkers.OfficeChecker().CheckSystem();
+            var version = GetOfficeVersion();
+            var license = LicenseChecker.CheckOffice();
+
+            // Microsoft 365 Apps signed in with a user account do not register a product key with
+            // the Software Protection service, so WMI finds nothing.
+            if (license.Activation == "Not Detected" && version.IndexOf("365", StringComparison.Ordinal) >= 0)
+                license = new LicenseInfo { Activation = "Microsoft 365 (check portal)", Channel = "Subscription" };
+
+            if (version == "Not Detected")
+                license = new LicenseInfo { Activation = "-", Channel = "-" };
 
             return (version, license);
         }
 
-        // -------------------------
-        // OFFICE VERSION
-        // -------------------------
-        private string GetOfficeVersion()
+        /// <summary>
+        /// Display name as shown in Programs and Features ("Microsoft Office Professional Plus 2019 - en-us"),
+        /// falling back to the Click-to-Run configuration.
+        /// </summary>
+        static string GetOfficeVersion()
         {
-            // =========================
-            // 1. ƯU TIÊN: UNINSTALL (FULL NAME CHUẨN)
-            // =========================
-            var paths = new[]
+            foreach (var app in SoftwareScanner.ReadUninstallEntries(machineOnly: true))
             {
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-            };
+                var lower = app.RawName.ToLowerInvariant();
+                var isSuite = lower.StartsWith("microsoft office") || lower.StartsWith("microsoft 365");
+                if (isSuite && !NotOfficeSuite.Any(lower.Contains))
+                    return app.RawName.Trim();
+            }
 
             try
             {
-                foreach (var path in paths)
-                {
-                    using var key = Registry.LocalMachine.OpenSubKey(path);
-                    if (key == null)
-                        continue;
-
-                    foreach (var subName in key.GetSubKeyNames())
-                    {
-                        using var sub = key.OpenSubKey(subName);
-
-                        var name = sub?.GetValue("DisplayName")?.ToString();
-                        var publisher = sub?.GetValue("Publisher")?.ToString();
-
-                        if (string.IsNullOrWhiteSpace(name))
-                            continue;
-
-                        var lower = name.ToLowerInvariant();
-
-                        // ✅ lọc chính xác hơn để tránh dính Office Tools / OneDrive...
-                        if (lower.Contains("microsoft office") &&
-                            !lower.Contains("update") &&
-                            !lower.Contains("click-to-run"))
-                        {
-                            return name.Trim(); // 🔥 chính là thứ bạn cần
-                        }
-                    }
-                }
-            }
-            catch
-            {
-            }
-
-            // =========================
-            // 2. FALLBACK: CLICK-TO-RUN (KHÔNG ĐẸP NHƯNG CỨU CÁNH)
-            // =========================
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(
-                    @"SOFTWARE\Microsoft\Office\ClickToRun\Configuration");
-
-                if (key != null)
-                {
-                    var client = key.GetValue("ClientVersionToReport")?.ToString();
-                    var product = key.GetValue("ProductReleaseIds")?.ToString();
-
-                    if (!string.IsNullOrWhiteSpace(product))
-                    {
-                        return $"Microsoft Office ({product}) [{client}]";
-                    }
-                }
+                using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+                using var key = hklm.OpenSubKey(@"SOFTWARE\Microsoft\Office\ClickToRun\Configuration");
+                var product = key?.GetValue("ProductReleaseIds")?.ToString();
+                var build = key?.GetValue("VersionToReport")?.ToString();
+                if (!string.IsNullOrWhiteSpace(product))
+                    return $"Microsoft Office ({product}) [{build}]";
             }
             catch
             {
