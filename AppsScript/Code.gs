@@ -8,7 +8,7 @@
 // Cap nhat: dan code nay vao project cu, Save, roi Deploy > Manage deployments > Edit (but chi)
 // > Version: New version > Deploy. KHONG tao deployment moi (URL /exec se doi).
 
-var FOLDER_ID = "18kZ-WqD7NjBd0vQi0p7JOkwPMDXGbcCg"; // ID thu muc DATA (lay tu URL khi mo thu muc)
+var FOLDER_ID = "1pkcngtArpemfOQuhnJRg892dKQQdiixW"; // ID thu muc DATA (lay tu URL khi mo thu muc)
 
 // Ten site tool gui len -> ten thu muc tren Drive
 var SITE_FOLDERS = {
