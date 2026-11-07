@@ -11,11 +11,11 @@ Gộp v1.3 (kiểm kê phần mềm, cách lấy IP cho server) và v1.4 (audit 
 
 ## Chạy
 
-Copy thư mục `SoftAudit v2.0.0` (4 file: `SoftAudit.exe`, `SoftAudit.exe.config`, `Run.bat`, `SoftAudit-Fallback.ps1`) rồi chạy `Run.bat`. Không cần quyền admin.
+Copy thư mục `SoftAudit v2.0.0` (4 file: `SoftAudit.exe`, `SoftAudit.exe.config`, `Run.bat`, `SoftAudit-Fallback.ps1`) rồi chạy `Run.bat`, chọn site (1 LITV, 2 HOT, 3 LDS, 4 Coralis, 5 chỉ lưu trên máy). Không cần quyền admin.
 
-- File luôn được lưu vào `C:\SoftAudit\HOST_IP_yyyyMMdd.xlsx`, sau đó copy lên share `\\10.168.109.254\Software\1. Tool Soft Audit\Data`. Site khác thì sửa dòng `SHARE` trong `Run.bat`.
+- File luôn được lưu vào `C:\SoftAudit\HOST_IP_yyyyMMdd.xlsx`, sau đó copy lên share của site đã chọn (đường dẫn nằm trong `Run.bat`; thư mục `SoftAudit` trên share được tự tạo nếu chưa có).
 - Nếu `SoftAudit.exe` không chạy được (máy thiếu .NET Framework 4.8, ví dụ Server 2008 R2 / 2012 R2 chưa cài), `Run.bat` tự chạy `SoftAudit-Fallback.ps1`, cùng logic, xuất ra 2 file CSV (`_summary.csv`, `_software.csv`).
-- Chạy tay: `SoftAudit.exe ["\\share\folder"] [/nopause]`. Exit code 0 = đã lưu được ít nhất 1 nơi.
+- Chạy tay: `SoftAudit.exe ["\\share\folder"] [/nopause]`; không truyền share thì chỉ lưu `C:\SoftAudit`. Exit code 0 = đã lưu được ít nhất 1 nơi.
 
 ## Cách hoạt động
 

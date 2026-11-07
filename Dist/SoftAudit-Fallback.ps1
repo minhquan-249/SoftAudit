@@ -1,9 +1,9 @@
 ﻿# SoftAudit v2.0.0 - PowerShell fallback
 # Used by Run.bat only when SoftAudit.exe cannot run (e.g. .NET Framework 4.8 missing on an old server).
 # Same checks as the exe, written for PowerShell 2.0+ (Windows 7 / Server 2008 R2 and later).
-# Output: <HOST>_<IP>_<yyyyMMdd>_summary.csv and _software.csv, in C:\SoftAudit and the share.
+# Output: <HOST>_<IP>_<yyyyMMdd>_summary.csv and _software.csv, in C:\SoftAudit and the site share (-SharePath).
 
-param([string]$SharePath = '\\10.168.109.254\Software\1. Tool Soft Audit\Data')
+param([string]$SharePath = '')
 
 $ErrorActionPreference = 'SilentlyContinue'
 $ToolVersion = '2.0.0-ps'
@@ -182,9 +182,9 @@ Write-Host "[SOFTWARE] $($software.Count) applications`n"
 # ---------------- save: local first, then share ----------------
 $base = '{0}_{1}_{2}' -f $hostName, $ip.Replace(':', '_'), (Get-Date -Format 'yyyyMMdd')
 $saved = $false
-foreach ($folder in @($LocalFolder, $SharePath)) {
+foreach ($folder in @($LocalFolder, $SharePath | Where-Object { $_ })) {
     try {
-        if ($folder -eq $LocalFolder -and -not (Test-Path $folder)) { New-Item -ItemType Directory -Path $folder -ErrorAction Stop | Out-Null }
+        if (-not (Test-Path $folder)) { New-Item -ItemType Directory -Path $folder -ErrorAction Stop | Out-Null }
         if (-not (Test-Path $folder)) { throw 'not reachable' }
         $summary | Export-Csv -Path (Join-Path $folder "$base`_summary.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
         $software | Export-Csv -Path (Join-Path $folder "$base`_software.csv") -NoTypeInformation -Encoding UTF8 -ErrorAction Stop

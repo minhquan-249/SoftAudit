@@ -13,12 +13,12 @@ namespace SoftAudit
     {
         public const string ToolVersion = "2.0.0";
 
-        const string DefaultSharePath = @"\\10.168.109.254\Software\1. Tool Soft Audit\Data";
         const string LocalFolder = @"C:\SoftAudit";
 
         /// <summary>
         /// SoftAudit.exe [shareFolder] [/nopause]
-        /// shareFolder overrides the default network folder (e.g. for another site).
+        /// shareFolder is the site's network folder (Run.bat picks it from the site menu);
+        /// without it the result is saved to C:\SoftAudit only.
         /// Exit code 0 = at least the local copy was saved, 1 = nothing saved.
         /// </summary>
         public static int Main(string[] args)
@@ -27,7 +27,7 @@ namespace SoftAudit
             Console.WriteLine($"SoftAudit v{ToolVersion}");
             Console.WriteLine("Starting audit...\n");
 
-            var sharePath = DefaultSharePath;
+            var sharePath = "";
             var pause = true;
             foreach (var a in args)
             {
@@ -103,10 +103,13 @@ namespace SoftAudit
                 Console.WriteLine($"\n[EXPORT]   Local failed: {ex.Message}");
             }
 
+            if (sharePath == "")
+                return localOk;
+
             try
             {
-                if (!Directory.Exists(sharePath))
-                    throw new IOException("share not reachable");
+                // creates the SoftAudit subfolder on first run; throws if the share itself is unreachable
+                Directory.CreateDirectory(sharePath);
                 if (localOk)
                     File.Copy(localFile, shareFile, overwrite: true);
                 else
